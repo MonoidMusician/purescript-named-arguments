@@ -1,5 +1,6 @@
 module Data.Function.Named where
 
+import Type.Equality (class TypeEquals, from, to)
 import Type.Row (kind RowList, class RowToList, class ListToRow, Nil, Cons, RLProxy(..))
 
 foreign import unsafeMergeImpl :: forall r1 r2 r.
@@ -10,8 +11,11 @@ unsafeMerge :: forall r1 r2 r. Union r1 r2 r =>
 unsafeMerge = unsafeMergeImpl
 
 type Named expected final =
-  forall given step.
-    CurryNamed expected given final step =>
+  forall remainingRL given remaining step.
+    Union remaining given expected =>
+    RowToList remaining remainingRL =>
+    ListToRow remainingRL remaining =>
+    CurryNamedRL remainingRL expected remaining given final step =>
   Record given -> step
 
 class CurryNamed
@@ -46,18 +50,20 @@ class
   (final       ::    Type)
   (step        ::    Type)
   | remainingRL expected given final -> step remaining
-  , remaining expected given final -> step remainingRL
-  , remainingRL -> remaining
-  , remaining -> remainingRL
   where
     curryNamedRL :: RLProxy remainingRL ->
       (Record expected -> final) ->
       (Record given -> step)
 
 instance fullyNamed ::
-  CurryNamedRL Nil expected () expected final final
+  ( TypeEquals final step
+  , Union remaining given expected
+  , RowToList remaining Nil
+  , ListToRow Nil remaining
+  , TypeEquals (Record expected) (Record given)
+  ) => CurryNamedRL Nil expected remaining given final step
   where
-    curryNamedRL _ f g = f g
+    curryNamedRL _ f g = to (f (from g))
 
 instance partiallyNamed ::
   ( ListToRow (Cons sym t rl) remaining
